@@ -1,0 +1,254 @@
+import socket
+import sys
+from tkinter import *
+# Tipuri de mesaje
+CONNECT = 0x10
+CONNACK = 0x20
+PUBLISH = 0x30
+PUBACK = 0x40
+PUBREC = 0x50
+PUBREL = 0x60
+PUBCOMP = 0x70
+SUBSCRIBE = 0x80
+SUBACK = 0x90
+UNSUBSCRIBE = 0xA0
+UNSUBACK = 0xB0
+PINGREQ = 0xC0
+PINGRESP = 0xD0
+DISCONNECT = 0xE0
+
+
+#FOR NOW
+
+DUP=0
+QOS=0
+RETAIN=0
+ClientID='GODhaveMercy'
+NumeProtocol='MQTT'
+Level=4
+
+#Port socket
+port=7000
+
+#Functie care transforma un Intreg in Obiect Bytes
+def CIB(par):
+    aux=(par).to_bytes(1, byteorder='big')
+    return aux
+
+def UTF8_String(sir):
+
+    aux=sys.getsizeof(sir)-17
+    rez=CIB(0)
+    rez+=CIB(aux)
+    rez+=sir.encode()
+    return rez
+
+#Functie care construieste primul byte din FIXED HEADER
+def FHDR(mesaj,dup,qos,retain):
+
+    aux=0
+
+    if dup==1:
+        aux+=1
+    aux=aux<<1
+    if qos==3:
+        aux+=1
+    aux=aux<<1
+    if qos==1 or qos==3:
+        aux+=1
+    aux=aux<<1
+    if retain==1:
+        aux+=1
+
+    aux=(mesaj|aux)
+    aux=CIB(aux)
+    return aux
+
+
+def Pachet_Connect(Name,Level,NameF,PasswordF,WillRetainF,WillQos,WillF,CleanSessionF,KeepAlive,ClientID):
+
+    pachet=FHDR(CONNECT,DUP,QOS,RETAIN)
+    pachet+=CIB(sys.getsizeof(ClientID)+10-25)
+
+    #aux=auxiliar in care se construieste headerul variabil, va fi alipit la pachetul deja creat
+    aux = CIB(0)
+    aux = aux + CIB(4)
+    aux = aux + Name.encode()
+
+    aux += CIB(Level)
+
+    flag_Byte = 0
+    if NameF == 1:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+    if PasswordF == 1:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+    if WillRetainF == 1:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+    if WillQos == 3:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+    if WillQos == 1 or WillQos == 3:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+    if WillF == 1:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+    if CleanSessionF == 1:
+        flag_Byte += 1
+    flag_Byte = flag_Byte << 1
+
+    flag_Byte = CIB(flag_Byte)
+    aux += flag_Byte
+
+    aux_Keep_Alive=CIB(0)
+    aux_Keep_Alive=CIB(KeepAlive)
+    aux += aux_Keep_Alive
+
+    pachet+=aux
+
+    #Payload, reprezentat de id-ul clientului
+    pachet+=ClientID.encode()
+
+    return pachet
+
+
+def Pachet_Publish(topicName,PacketID,Payload):
+    pachet=FHDR(PUBLISH,DUP,QOS,RETAIN)
+    pachet+=CIB(sys.getsizeof(topicName)+sys.getsizeof(Payload)-34+4)
+    pachet+=UTF8_String(topicName)
+    pachet+=CIB(0)
+    pachet+=CIB(PacketID)
+    pachet+=Payload.encode()
+    return pachet
+
+
+def Pachet_Pubrel(PacketID):
+    pachet=FHDR(PUBREL,DUP,QOS,RETAIN)
+    pachet+=CIB(2)
+    pachet+=CIB(0)
+    pachet+=CIB(PacketID)
+    return pachet
+
+def Pachet_Subscribe(PachetId,Topic,Qos):
+    pachet=FHDR(SUBSCRIBE,DUP,QOS,RETAIN)
+    aux = sys.getsizeof(Topic) - 17
+    pachet += CIB(aux + 1 + 2 + 2)
+    pachet+=CIB(0)
+    pachet+=CIB(PachetId)
+    pachet+=UTF8_String(Topic)
+    pachet+=CIB(Qos)
+    return pachet
+
+def Pachet_Pingreq():
+    pachet=FHDR(PINGREQ,DUP,QOS,RETAIN)
+    pachet+=CIB(0)
+    return pachet
+
+
+def Pachet_Disconect():
+    pachet = FHDR(DISCONNECT, DUP, QOS, RETAIN)
+    pachet += CIB(0)
+    return pachet
+
+#Functie pentru crearea socketului si conectarea la port
+def Creaza_Socket(port):
+    Soc_Client_Aux = socket.socket()
+    print("Am creat socket-ul clientului")
+    Soc_Client_Aux.connect(('127.0.0.1', port))
+    print("Clientul s-a conectat la server")
+    return Soc_Client_Aux
+
+#functie pentru inchiderea socketului
+def Inchide_Socket(Socket_Client):
+    Socket_Client.close()
+    print("Socket-ul clientului s-a inchis")
+
+#Functie pentru trimitere pachet
+def Trimmite_Packet(Socket_Client,pachet):
+    Socket_Client.send(pachet)
+
+
+
+
+#MAIN
+#pachetCONN=Pachet_Connect(NumeProtocol,Level,1,1,1,1,1,1,120,ClientID)
+
+#fereastra=Tk()
+
+#layoutServer=Frame(fereastra)
+#layoutClient=Frame(fereastra)
+
+#layoutServer.grid(row=0)
+#layoutClient.grid(row=0)
+
+#aux=0
+#ButonClient=Button(layoutClient.grid(row=0),text="Porneste Client",command=Creaza_Socket(port,aux))
+#ButtonTrimite=Button(layoutClient.grid(row=1),text="Trimite Pachet",command=Trimmite_Packet(aux,pachetCONN))
+
+#fereastra.mainloop()
+
+
+
+pachetCONN=Pachet_Connect(NumeProtocol,Level,1,1,1,1,1,1,120,ClientID)
+pachetPUBL=Pachet_Publish('A/B/C',13,'D/E/F')
+pachetPUBR=Pachet_Pubrel(48)
+pachetSUB=Pachet_Subscribe(30,'A',1)
+pachetPING=Pachet_Pingreq()
+pachetDIS=Pachet_Disconect()
+
+Sochet_Client=Creaza_Socket(port)
+
+Trimmite_Packet(Sochet_Client,pachetCONN)
+
+Inchide_Socket(Sochet_Client)
+
+#pachet+='GODHELP'.encode()
+#print(pachet)
+
+#SocClient.send('Avemaria'.encode())
+
+-------------------------------------SERVER---------------------------------
+
+
+import socket
+import time
+
+# Tipuri de mesaje
+CONNECT = 0x10
+CONNACK = 0x20
+PUBLISH = 0x30
+PUBACK = 0x40
+PUBREC = 0x50
+PUBREL = 0x60
+PUBCOMP = 0x70
+SUBSCRIBE = 0x80
+SUBACK = 0x90
+UNSUBSCRIBE = 0xA0
+UNSUBACK = 0xB0
+PINGREQ = 0xC0
+PINGRESP = 0xD0
+DISCONNECT = 0xE0
+
+
+
+SocServer=socket.socket()
+print("Am creat socket-ul serverului")
+
+port=7000
+SocServer.bind(('',port))
+print("Serverul s-a legat de portul %s" %(port))
+
+SocServer.listen(10)
+print("Serverul asculta")
+
+
+SocClient,addr=SocServer.accept()
+print("Un client s-a conectat la server")
+
+print(SocClient.recv(1024))
+
+SocServer.close()
+print("Socket-ul serverului s-a inchis")
